@@ -2,7 +2,6 @@
 
 use std::{io, net::SocketAddr, sync::Arc, time::Duration};
 
-use async_trait::async_trait;
 use log::{debug, error, info};
 use shadowsocks::{
     relay::{socks5::Address, udprelay::MAXIMUM_UDP_PAYLOAD_SIZE},
@@ -61,7 +60,7 @@ impl TunnelUdpServerBuilder {
                     use tokio::net::UdpSocket as TokioUdpSocket;
                     use crate::net::launch_activate_socket::get_launch_activate_udp_socket;
 
-                    let std_socket = get_launch_activate_udp_socket(&launchd_socket_name)?;
+                    let std_socket = get_launch_activate_udp_socket(&launchd_socket_name, true)?;
                     TokioUdpSocket::from_std(std_socket)?
                 } else {
                     create_standard_udp_listener(&self.context, &self.client_config).await?.into()
@@ -87,7 +86,6 @@ struct TunnelUdpInboundWriter {
     inbound: Arc<UdpSocket>,
 }
 
-#[async_trait]
 impl UdpInboundWrite for TunnelUdpInboundWriter {
     async fn send_to(&self, peer_addr: SocketAddr, _remote_addr: &Address, data: &[u8]) -> io::Result<()> {
         self.inbound.send_to(data, peer_addr).await.map(|_| ())

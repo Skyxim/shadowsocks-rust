@@ -24,7 +24,7 @@ use std::{
 ))]
 use futures::future;
 use futures::ready;
-use pin_project::pin_project;
+
 #[cfg(any(
     target_os = "linux",
     target_os = "android",
@@ -39,9 +39,7 @@ use crate::{context::Context, relay::socks5::Address, ServerAddr};
 
 use super::{
     sys::{bind_outbound_udp_socket, create_inbound_udp_socket, create_outbound_udp_socket},
-    AcceptOpts,
-    AddrFamily,
-    ConnectOpts,
+    AcceptOpts, AddrFamily, ConnectOpts,
 };
 
 /// Message struct for `batch_send`
@@ -53,8 +51,11 @@ use super::{
     target_os = "freebsd"
 ))]
 pub struct BatchSendMessage<'a> {
+    /// Optional target address
     pub addr: Option<SocketAddr>,
+    /// Data to be transmitted
     pub data: &'a [IoSlice<'a>],
+    /// Output result. The number of bytes sent by `batch_send`
     pub data_len: usize,
 }
 
@@ -67,8 +68,11 @@ pub struct BatchSendMessage<'a> {
     target_os = "freebsd"
 ))]
 pub struct BatchRecvMessage<'a> {
+    /// Peer address
     pub addr: SocketAddr,
+    /// Data buffer for receiving
     pub data: &'a mut [IoSliceMut<'a>],
+    /// Output result. The number of bytes received by `batch_recv`
     pub data_len: usize,
 }
 
@@ -81,9 +85,8 @@ fn make_mtu_error(packet_size: usize, mtu: usize) -> io::Error {
 }
 
 /// Wrappers for outbound `UdpSocket`
-#[pin_project]
+#[derive(Debug)]
 pub struct UdpSocket {
-    #[pin]
     socket: tokio::net::UdpSocket,
     mtu: Option<usize>,
 }
@@ -161,6 +164,12 @@ impl UdpSocket {
                 socket,
                 mtu: opts.udp.mtu,
             })
+    }
+
+    /// Binds to a specific address as an outbound socket
+    #[inline]
+    pub async fn bind(addr: &SocketAddr) -> io::Result<UdpSocket> {
+        UdpSocket::bind_with_opts(addr, &ConnectOpts::default()).await
     }
 
     /// Binds to a specific address with opts as an outbound socket

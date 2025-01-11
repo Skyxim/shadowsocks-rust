@@ -10,8 +10,7 @@ use std::{
         io::{AsRawSocket, FromRawSocket, IntoRawSocket, RawSocket},
     },
     pin::Pin,
-    ptr,
-    slice,
+    ptr, slice,
     task::{self, Poll},
     time::{Duration, Instant},
 };
@@ -30,32 +29,13 @@ use windows_sys::{
     Win32::{
         Foundation::{BOOL, ERROR_BUFFER_OVERFLOW, ERROR_NO_DATA, ERROR_SUCCESS},
         NetworkManagement::IpHelper::{
-            if_nametoindex,
-            GetAdaptersAddresses,
-            GAA_FLAG_SKIP_ANYCAST,
-            GAA_FLAG_SKIP_DNS_SERVER,
-            GAA_FLAG_SKIP_MULTICAST,
-            GAA_FLAG_SKIP_UNICAST,
-            IP_ADAPTER_ADDRESSES_LH,
+            if_nametoindex, GetAdaptersAddresses, GAA_FLAG_SKIP_ANYCAST, GAA_FLAG_SKIP_DNS_SERVER,
+            GAA_FLAG_SKIP_MULTICAST, GAA_FLAG_SKIP_UNICAST, IP_ADAPTER_ADDRESSES_LH,
         },
         Networking::WinSock::{
-            htonl,
-            setsockopt,
-            WSAGetLastError,
-            WSAIoctl,
-            AF_UNSPEC,
-            IPPROTO_IP,
-            IPPROTO_IPV6,
-            IPPROTO_TCP,
-            IPV6_MTU_DISCOVER,
-            IPV6_UNICAST_IF,
-            IP_MTU_DISCOVER,
-            IP_PMTUDISC_DO,
-            IP_UNICAST_IF,
-            SIO_UDP_CONNRESET,
-            SOCKET,
-            SOCKET_ERROR,
-            TCP_FASTOPEN,
+            htonl, setsockopt, WSAGetLastError, WSAIoctl, AF_UNSPEC, IPPROTO_IP, IPPROTO_IPV6, IPPROTO_TCP,
+            IPV6_MTU_DISCOVER, IPV6_UNICAST_IF, IP_MTU_DISCOVER, IP_PMTUDISC_DO, IP_UNICAST_IF, SIO_UDP_CONNRESET,
+            SOCKET, SOCKET_ERROR, TCP_FASTOPEN,
         },
     },
 };
@@ -66,9 +46,7 @@ const FALSE: BOOL = 0;
 use crate::net::{
     is_dual_stack_addr,
     sys::{set_common_sockopt_for_connect, socket_bind_dual_stack},
-    AcceptOpts,
-    AddrFamily,
-    ConnectOpts,
+    AcceptOpts, AddrFamily, ConnectOpts,
 };
 
 /// A `TcpStream` that supports TFO (TCP Fast Open)
@@ -490,8 +468,8 @@ pub async fn create_inbound_udp_socket(addr: &SocketAddr, ipv6_only: bool) -> io
 #[inline(always)]
 pub async fn create_outbound_udp_socket(af: AddrFamily, opts: &ConnectOpts) -> io::Result<UdpSocket> {
     let bind_addr = match (af, opts.bind_local_addr) {
-        (AddrFamily::Ipv4, Some(IpAddr::V4(ip))) => SocketAddr::new(ip.into(), 0),
-        (AddrFamily::Ipv6, Some(IpAddr::V6(ip))) => SocketAddr::new(ip.into(), 0),
+        (AddrFamily::Ipv4, Some(SocketAddr::V4(addr))) => addr.into(),
+        (AddrFamily::Ipv6, Some(SocketAddr::V6(addr))) => addr.into(),
         (AddrFamily::Ipv4, ..) => SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 0),
         (AddrFamily::Ipv6, ..) => SocketAddr::new(Ipv6Addr::UNSPECIFIED.into(), 0),
     };
@@ -520,8 +498,10 @@ pub async fn bind_outbound_udp_socket(bind_addr: &SocketAddr, opts: &ConnectOpts
     socket.set_nonblocking(true)?;
     let socket = UdpSocket::from_std(socket.into())?;
 
-    if let Err(err) = set_disable_ip_fragmentation(af, &socket) {
-        warn!("failed to disable IP fragmentation, error: {}", err);
+    if !opts.udp.allow_fragmentation {
+        if let Err(err) = set_disable_ip_fragmentation(af, &socket) {
+            warn!("failed to disable IP fragmentation, error: {}", err);
+        }
     }
     disable_connection_reset(&socket)?;
 

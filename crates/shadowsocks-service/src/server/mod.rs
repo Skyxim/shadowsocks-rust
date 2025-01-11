@@ -1,22 +1,15 @@
 //! Shadowsocks server
 
-use std::{
-    future::Future,
-    io::{self, ErrorKind},
-    pin::Pin,
-    sync::Arc,
-    task::{Context, Poll},
-    time::Duration,
-};
+use std::{io, net::SocketAddr, sync::Arc, time::Duration};
 
-use futures::{future, ready};
+use futures::future;
 use log::trace;
-use shadowsocks::net::{AcceptOpts, ConnectOpts};
-use tokio::task::JoinHandle;
+use shadowsocks::net::{AcceptOpts, ConnectOpts, UdpSocketOpts};
 
 use crate::{
     config::{Config, ConfigType},
     dns::build_dns_resolver,
+    utils::ServerHandle,
 };
 
 pub use self::{
@@ -71,8 +64,14 @@ pub async fn run(config: Config) -> io::Result<()> {
         #[cfg(target_os = "android")]
         vpn_protect_path: config.outbound_vpn_protect_path,
 
-        bind_local_addr: config.outbound_bind_addr,
+        bind_local_addr: config.outbound_bind_addr.map(|ip| SocketAddr::new(ip, 0)),
         bind_interface: config.outbound_bind_interface,
+
+        udp: UdpSocketOpts {
+            allow_fragmentation: config.outbound_udp_allow_fragmentation,
+
+            ..Default::default()
+        },
 
         ..Default::default()
     };
@@ -111,8 +110,28 @@ pub async fn run(config: Config) -> io::Result<()> {
             server_builder.set_dns_resolver(r.clone());
         }
 
-        server_builder.set_connect_opts(connect_opts.clone());
-        server_builder.set_accept_opts(accept_opts.clone());
+        let mut connect_opts = connect_opts.clone();
+        let accept_opts = accept_opts.clone();
+
+        #[cfg(any(target_os = "linux", target_os = "android"))]
+        if let Some(fwmark) = inst.outbound_fwmark {
+            connect_opts.fwmark = Some(fwmark);
+        }
+
+        if let Some(bind_local_addr) = inst.outbound_bind_addr {
+            connect_opts.bind_local_addr = Some(SocketAddr::new(bind_local_addr, 0));
+        }
+
+        if let Some(bind_interface) = inst.outbound_bind_interface {
+            connect_opts.bind_interface = Some(bind_interface);
+        }
+
+        if let Some(udp_allow_fragmentation) = inst.outbound_udp_allow_fragmentation {
+            connect_opts.udp.allow_fragmentation = udp_allow_fragmentation;
+        }
+
+        server_builder.set_connect_opts(connect_opts);
+        server_builder.set_accept_opts(accept_opts);
 
         if let Some(c) = config.udp_max_associations {
             server_builder.set_udp_capacity(c);
@@ -137,10 +156,6 @@ pub async fn run(config: Config) -> io::Result<()> {
             server_builder.set_ipv6_first(config.ipv6_first);
         }
 
-        if config.worker_count >= 1 {
-            server_builder.set_worker_count(config.worker_count);
-        }
-
         server_builder.set_security_config(&config.security);
 
         let server = server_builder.build().await?;
@@ -160,25 +175,4 @@ pub async fn run(config: Config) -> io::Result<()> {
 
     let (res, ..) = future::select_all(vfut).await;
     res
-}
-
-struct ServerHandle(JoinHandle<io::Result<()>>);
-
-impl Drop for ServerHandle {
-    #[inline]
-    fn drop(&mut self) {
-        self.0.abort();
-    }
-}
-
-impl Future for ServerHandle {
-    type Output = io::Result<()>;
-
-    #[inline]
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        match ready!(Pin::new(&mut self.0).poll(cx)) {
-            Ok(res) => res.into(),
-            Err(err) => Err(io::Error::new(ErrorKind::Other, err)).into(),
-        }
-    }
 }

@@ -4,7 +4,7 @@
 
 use std::{io, net::SocketAddr, sync::Arc, time::Duration};
 
-use hyper::{server::conn::http1, service};
+use hyper::{body, server::conn::http1, service};
 use log::{error, info, trace};
 use shadowsocks::{config::ServerAddr, net::TcpListener};
 use tokio::{
@@ -13,9 +13,7 @@ use tokio::{
 };
 
 use crate::local::{
-    context::ServiceContext,
-    loadbalancing::PingBalancer,
-    net::tcp::listener::create_standard_tcp_listener,
+    context::ServiceContext, loadbalancing::PingBalancer, net::tcp::listener::create_standard_tcp_listener,
 };
 
 use super::{http_client::HttpClient, http_service::HttpService, tokio_rt::TokioIo};
@@ -64,7 +62,7 @@ impl HttpBuilder {
                     use tokio::net::TcpListener as TokioTcpListener;
                     use crate::net::launch_activate_socket::get_launch_activate_tcp_listener;
 
-                    let std_listener = get_launch_activate_tcp_listener(&launchd_socket_name)?;
+                    let std_listener = get_launch_activate_tcp_listener(&launchd_socket_name, true)?;
                     let tokio_listener = TokioTcpListener::from_std(std_listener)?;
                     TcpListener::from_listener(tokio_listener, self.context.accept_opts())?
                 } else {
@@ -138,7 +136,7 @@ impl Http {
 pub struct HttpConnectionHandler {
     context: Arc<ServiceContext>,
     balancer: PingBalancer,
-    http_client: HttpClient,
+    http_client: HttpClient<body::Incoming>,
 }
 
 impl HttpConnectionHandler {

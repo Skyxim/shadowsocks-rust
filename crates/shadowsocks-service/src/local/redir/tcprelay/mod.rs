@@ -32,7 +32,7 @@ mod sys;
 /// Established Client Transparent Proxy
 ///
 /// This method must be called after handshaking with client (for example, socks5 handshaking)
-async fn establish_client_tcp_redir<'a>(
+async fn establish_client_tcp_redir(
     context: Arc<ServiceContext>,
     balancer: PingBalancer,
     mut stream: TcpStream,
@@ -47,7 +47,8 @@ async fn establish_client_tcp_redir<'a>(
     let server = balancer.best_tcp_server();
     let svr_cfg = server.server_config();
 
-    let mut remote = AutoProxyClientStream::connect(context, &server, addr).await?;
+    let mut remote =
+        AutoProxyClientStream::connect_with_opts(context, &server, addr, server.connect_opts_ref()).await?;
 
     establish_tcp_tunnel(svr_cfg, &mut stream, &mut remote, peer_addr, addr).await
 }
